@@ -28,20 +28,28 @@ let clipNames = [
 ];
 let projects = [
   {
-    image: 'textures/project-spaze.webp',
-    url: 'https://www.spaze.social/',
+    name: 'Brasa',
+    description: 'Twenty-five years of fire for any place on Earth',
+    image: 'textures/project-brasa.jpg',
+    url: 'https://brasa-869475682695.europe-west1.run.app/',
   },
   {
-    image: 'textures/project-myteachers.jpg',
-    url: 'https://myteachers.com.au/',
+    name: 'Cultini',
+    image: 'textures/project-cultini.jpg',
+    type: 'video',
+    videoSrc: 'videos/cultini.mp4',
   },
   {
-    image: 'textures/project-wholesale.jpg',
-    url: 'https://wholesale.com.np/',
+    name: 'Carte Culturelle',
+    image: 'textures/project-carte.jpg',
+    type: 'video',
+    videoSrc: 'videos/carte.mp4',
   },
   {
-    image: 'textures/project-pelotero.jpg',
-    url: 'https://www.peloterosenlaweb.com/',
+    name: 'The Clinical Atelier',
+    image: 'textures/project-clinical-atelier.jpg',
+    type: 'video',
+    videoSrc: 'videos/clinical-atelier.mp4',
   },
 ];
 let aboutCameraPos = {
@@ -222,6 +230,30 @@ gltfLoader.load(
     });
 
     scene.add(room.scene);
+
+    // Hide "Creative Works" decorative wall elements baked into the GLB:
+    // yellow "Design" label, purple "Code" label, and outlined background text.
+    // Identify them by their distinctive material colors (yellow & purple)
+    // and by being non-structural wall decoration meshes.
+    room.scene.traverse((obj) => {
+      if (!obj.isMesh) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach((mat) => {
+        if (!mat || !mat.color) return;
+        const r = mat.color.r;
+        const g = mat.color.g;
+        const b = mat.color.b;
+        // Yellow (#fcd34d-ish): high R, high G, low B
+        const isYellow = r > 0.8 && g > 0.7 && b < 0.4;
+        // Purple (#a855f7-ish): moderate R, low G, very high B
+        const isPurple = r > 0.4 && g < 0.4 && b > 0.7;
+        // Outlined/ghost text: fully white emissive or near-white with low opacity
+        const isGhostText = mat.transparent && mat.opacity < 0.5 && r > 0.8 && g > 0.8 && b > 0.8;
+        if (isYellow || isPurple || isGhostText) {
+          obj.visible = false;
+        }
+      });
+    });
     animate();
 
     // add animation
@@ -238,7 +270,6 @@ gltfLoader.load(
     loadIntroText();
 
     // add event listeners
-    logoListener();
     aboutMenuListener();
     projectsMenuListener();
     init3DWorldClickListeners();
@@ -338,15 +369,17 @@ function loadIntroText() {
       new THREE.MeshPhongMaterial({ color: 0x171f27, flatShading: true }),
       new THREE.MeshPhongMaterial({ color: 0xffffff }),
     ];
-    const titleGeo = new TextGeometry('SUSHIL THAPA', {
+    const titleGeo = new TextGeometry('ANIS YAHMI', {
       font: font,
       size: 0.08,
       height: 0.01,
     });
+    titleGeo.computeBoundingBox();
     titleText = new THREE.Mesh(titleGeo, textMaterials);
     titleText.rotation.y = Math.PI * 0.5;
     titleText.position.set(-0.27, 0.55, 0.5);
     scene.add(titleText);
+    centerSubtitle();
   });
 
   loader.load('fonts/helvatica.json', function (font) {
@@ -355,18 +388,33 @@ function loadIntroText() {
       new THREE.MeshPhongMaterial({ color: 0xffffff }),
     ];
     const subTitleGeo = new TextGeometry(
-      'Web Designer / Developer / Content Creator',
+      'Creative Technologist & Multidisciplinary Developer',
       {
         font: font,
-        size: 0.018,
+        size: 0.015,
         height: 0,
       }
     );
+    subTitleGeo.computeBoundingBox();
     subtitleText = new THREE.Mesh(subTitleGeo, textMaterials);
     subtitleText.rotation.y = Math.PI * 0.5;
-    subtitleText.position.set(-0.255, 0.5, 0.5);
+    subtitleText.position.set(-0.255, 0.5, 0.466);
     scene.add(subtitleText);
+    centerSubtitle();
   });
+
+  function centerSubtitle() {
+    if (titleText && subtitleText) {
+      const titleWidth =
+        titleText.geometry.boundingBox.max.x -
+        titleText.geometry.boundingBox.min.x;
+      const subWidth =
+        subtitleText.geometry.boundingBox.max.x -
+        subtitleText.geometry.boundingBox.min.x;
+      const titleCenterZ = titleText.position.z - titleWidth / 2;
+      subtitleText.position.z = titleCenterZ + subWidth / 2;
+    }
+  }
 }
 
 function switchTheme(themeType) {
@@ -558,6 +606,8 @@ function resetCamera() {
   resetBookCover();
   resetProjects();
   disableCloseBtn();
+  const aboutSec = document.querySelector('.section--about');
+  if (aboutSec) aboutSec.classList.remove('active');
   gsap.to(camera.position, {
     ...defaultCameraPos,
     duration: 1.5,
@@ -575,13 +625,6 @@ function resetCamera() {
       duration: 1.5,
     });
   }
-}
-
-function logoListener() {
-  document.getElementById('logo').addEventListener('click', function (e) {
-    e.preventDefault();
-    resetCamera();
-  });
 }
 
 function cameraToAbout() {
@@ -635,7 +678,11 @@ function projectsMenuListener() {
     const projectPlane = new THREE.Mesh(geometry, material);
     projectPlane.name = 'project';
     projectPlane.userData = {
-      url: project.url,
+      name: project.name || '',
+      description: project.description || '',
+      type: project.type || '',
+      videoSrc: project.videoSrc || '',
+      url: project.url || '',
     };
     projectPlane.position.set(
       0.3 + i * 0.8 * colIndex,
@@ -709,8 +756,11 @@ function init3DWorldClickListeners() {
     intersects = raycaster.intersectObjects(scene.children);
     intersects.forEach((intersect) => {
       if (intersect.object.name === 'project') {
-        intersect.object.userData.url &&
+        if (intersect.object.userData.type === 'video') {
+          openVideoModal(intersect.object.userData.videoSrc);
+        } else if (intersect.object.userData.url) {
           window.open(intersect.object.userData.url);
+        }
       }
 
       if (
@@ -795,6 +845,38 @@ document.addEventListener('mouseup', (e) => {
       .classList.remove('contact-menu__dropdown--open');
   }
 });
+
+// VIDEO MODAL
+function openVideoModal(src) {
+  let modal = document.getElementById('video-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'video-modal';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div id="video-modal-backdrop"></div>
+    <div id="video-modal-content">
+      <button id="video-modal-close" aria-label="Close video">&times;</button>
+      <video id="video-modal-player" controls autoplay playsinline>
+        <source src="${src}" type="video/mp4" />
+      </video>
+    </div>
+  `;
+  modal.style.display = 'flex';
+  document.getElementById('video-modal-close').onclick = closeVideoModal;
+  document.getElementById('video-modal-backdrop').onclick = closeVideoModal;
+}
+
+function closeVideoModal() {
+  const modal = document.getElementById('video-modal');
+  if (modal) {
+    const video = document.getElementById('video-modal-player');
+    if (video) video.pause();
+    modal.style.display = 'none';
+    modal.innerHTML = '';
+  }
+}
 
 // update camera, renderer on resize
 window.addEventListener('resize', () => {
